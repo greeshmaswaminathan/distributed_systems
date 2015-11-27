@@ -21,8 +21,12 @@ public class EventuallyConsistentStore implements DataStore{
 		 List<DataStore> secondaryDataStores = CommonDataStoreFactory.getSecondaryDataStores();
 		 dataStores.add(primaryDataStore);
 		 dataStores.addAll(secondaryDataStores);
-		 pool = Executors.newFixedThreadPool(10);
-		 
+		 pool = Executors.newCachedThreadPool();
+		 Runtime.getRuntime().addShutdownHook(new Thread() {
+			    public void run() { 
+			    	pool.shutdown(); 
+			    	}
+			});
 		 
 	}
 	
@@ -50,48 +54,63 @@ public class EventuallyConsistentStore implements DataStore{
 		//check if values are existing	
 		DataStore dataStore = pickAServer();
 		serverId = dataStores.indexOf(dataStore);
-		updateValue(key, values.get(0), dataStore, serverId,systemTime);
-		replicate(serverId, key, values.get(0),systemTime);
+		boolean updated = updateValue(key, values.get(0), dataStore, serverId,systemTime);
+		if(updated) {
+			replicate(serverId, key, values.get(0),systemTime);
+		}
 		
 	}
 
-	private synchronized void updateValue(String key, String valueToWrite, DataStore dataStore, int serverId, long systemTime) {
-		System.out.println("Trying to update value "+key+":"+valueToWrite+":"+systemTime+":"+serverId);
+	private synchronized boolean updateValue(String key, String valueToWrite, DataStore dataStore, int serverId, long systemTime) {
+		//System.out.println("Trying to update value "+key+":"+valueToWrite+":"+systemTime+":"+serverId);
 		List<String> existingValues = dataStore.read(key);
-		List<String> updatedValues = new ArrayList<String>();
-		boolean updatedWithNewValue = false;
+		List<String> revisedValues = new ArrayList<String>();
+		
+		boolean isNewValueWritten = false;
 		if(existingValues != null && existingValues.size()>0){
 			for (String value : existingValues) {
-				if(updateExisting(value, updatedValues, serverId, valueToWrite, systemTime)){
-					updatedWithNewValue = true;
+				String[] split = value.split(":");
+				boolean isSameServer = isSameServerEntry(split[1],serverId);
+				if(isSameServer){
+					if(isOutDated(split[2], serverId,  systemTime)){
+						return false;
+					}else{
+						revisedValues.add(appendValueWithServerDetails(valueToWrite, serverId, systemTime));
+						isNewValueWritten = true;
+					}
 				}else{
-					updatedValues.add(value);
+					revisedValues.add(value);
 				}
+				
 			}
 		}
 		
-		if(!updatedWithNewValue){
-			String value = markValueWithServerDetails(valueToWrite, serverId,systemTime);
-			updatedValues.add(value);
-		}
-		if(updatedValues.size() > 0){
-			dataStore.write(key, updatedValues);
-			System.out.println("Updated value "+key+":"+valueToWrite+":"+systemTime+":"+serverId);
+		if(!isNewValueWritten){
+			String value = appendValueWithServerDetails(valueToWrite, serverId,systemTime);
+			revisedValues.add(value);
 		}
 		
+		if(revisedValues.size() > 0){
+			dataStore.write(key, revisedValues);
+			return true;
+		}
+		return false;
 	}
 	
-	private String markValueWithServerDetails(String valueToWrite, int serverId, long systemTime){
+	private boolean isSameServerEntry(String existingServerEntry, int serverId) {
+		if(existingServerEntry.equals("Server"+serverId)){
+			return true;
+		}
+		return false;
+	}
+
+	private String appendValueWithServerDetails(String valueToWrite, int serverId, long systemTime){
 		return valueToWrite+":Server"+serverId+":"+systemTime;
 	}
 	
-	private boolean updateExisting(String value, List<String> updatedValues, int serverId, String valueToWrite,long systemTime){
-		String[] split = value.split(":");
-		if(split[1].equals("Server"+serverId)){
-			if(Long.parseLong(split[2]) < systemTime){
-				value = markValueWithServerDetails(valueToWrite, serverId, systemTime);
-				updatedValues.add(value);
-			}
+	private boolean isOutDated(String timeStampInStore, int serverId,long systemTime){
+		if(Long.parseLong(timeStampInStore) > systemTime){
+			//value = markValueWithServerDetails(valueToWrite, serverId, systemTime);
 			return true;
 		}
 		return false;
@@ -106,8 +125,8 @@ public class EventuallyConsistentStore implements DataStore{
 					
 					@Override
 					public void run() {
-						System.out.println("Trying to replicate value "+key+":"+value+":"+systemTime+":"+primaryServerId +" to "+serverId);
-						updateValue(key, value, secondaryDataStore, serverId, systemTime);
+						//System.out.println("Trying to replicate value "+key+":"+value+":"+systemTime+":"+primaryServerId +" to "+serverId);
+						updateValue(key, value, secondaryDataStore, primaryServerId, systemTime);
 					}
 				};
 				//new Thread(runnable).start();

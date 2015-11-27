@@ -12,6 +12,9 @@ public class RedisDataStore implements DataStore {
 	private JedisPool pool;
 	public RedisDataStore(JedisPool pool) {
 		this.pool = pool;
+		Runtime.getRuntime().addShutdownHook(new Thread() {
+		    public void run() { pool.destroy(); }
+		});
 	}
 	
 	@Override
@@ -25,16 +28,12 @@ public class RedisDataStore implements DataStore {
 	@Override
 	public void write(String key, List<String> values) {
 		final Jedis redisConnection = pool.getResource();
-		 redisConnection.del(key);
+		 long deleted = redisConnection.del(key);
+		 //System.out.println(deleted+":"+key);
 		 redisConnection.rpush(key,values.toArray(new String[values.size()]));
 		 redisConnection.close();
 	}
 
-	@Override
-	protected void finalize() throws Throwable {
-		//TODO put this in a more appropriate place, some listener for app shutdown
-		pool.destroy();
-		super.finalize();
-	}
+	
 	
 }

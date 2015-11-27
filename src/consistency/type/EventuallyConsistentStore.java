@@ -61,40 +61,43 @@ public class EventuallyConsistentStore implements DataStore{
 		
 	}
 
-	private synchronized boolean updateValue(String key, String valueToWrite, DataStore dataStore, int serverId, long systemTime) {
+	private boolean updateValue(String key, String valueToWrite, DataStore dataStoreToUpdate, int originatingServer, long systemTime) {
 		//System.out.println("Trying to update value "+key+":"+valueToWrite+":"+systemTime+":"+serverId);
-		List<String> existingValues = dataStore.read(key);
-		List<String> revisedValues = new ArrayList<String>();
-		
-		boolean isNewValueWritten = false;
-		if(existingValues != null && existingValues.size()>0){
-			for (String value : existingValues) {
-				String[] split = value.split(":");
-				boolean isSameServer = isSameServerEntry(split[1],serverId);
-				if(isSameServer){
-					if(isOutDated(split[2], serverId,  systemTime)){
-						return false;
+		synchronized(dataStoreToUpdate){
+			List<String> existingValues = dataStoreToUpdate.read(key);
+			List<String> revisedValues = new ArrayList<String>();
+			
+			boolean isNewValueWritten = false;
+			if(existingValues != null && existingValues.size()>0){
+				for (String value : existingValues) {
+					String[] split = value.split(":");
+					boolean isSameServer = isSameServerEntry(split[1],originatingServer);
+					if(isSameServer){
+						if(isOutDated(split[2], originatingServer,  systemTime)){
+							return false;
+						}else{
+							revisedValues.add(appendValueWithServerDetails(valueToWrite, originatingServer, systemTime));
+							isNewValueWritten = true;
+						}
 					}else{
-						revisedValues.add(appendValueWithServerDetails(valueToWrite, serverId, systemTime));
-						isNewValueWritten = true;
+						revisedValues.add(value);
 					}
-				}else{
-					revisedValues.add(value);
+					
 				}
-				
 			}
+			
+			if(!isNewValueWritten){
+				String value = appendValueWithServerDetails(valueToWrite, originatingServer,systemTime);
+				revisedValues.add(value);
+			}
+			
+			if(revisedValues.size() > 0){
+				dataStoreToUpdate.write(key, revisedValues);
+				return true;
+			}
+			return false;
 		}
 		
-		if(!isNewValueWritten){
-			String value = appendValueWithServerDetails(valueToWrite, serverId,systemTime);
-			revisedValues.add(value);
-		}
-		
-		if(revisedValues.size() > 0){
-			dataStore.write(key, revisedValues);
-			return true;
-		}
-		return false;
 	}
 	
 	private boolean isSameServerEntry(String existingServerEntry, int serverId) {

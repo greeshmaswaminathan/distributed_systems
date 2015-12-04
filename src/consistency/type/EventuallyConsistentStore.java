@@ -1,144 +1,109 @@
 package consistency.type;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import consistency.datastore.DataStore;
 import consistency.type.factory.CommonDataStoreFactory;
 
-public class EventuallyConsistentStore implements DataStore{
+public class EventuallyConsistentStore implements DataStore {
 
-	//private DataStore primaryDataStore;
 	private List<DataStore> dataStores;
 	private int serverIndex = 0;
 	private ExecutorService pool = null;
-	
-	 public EventuallyConsistentStore() {
-		 dataStores = new ArrayList<DataStore>();
-		 DataStore primaryDataStore = CommonDataStoreFactory.getPrimaryDataStore();
-		 List<DataStore> secondaryDataStores = CommonDataStoreFactory.getSecondaryDataStores();
-		 dataStores.add(primaryDataStore);
-		 dataStores.addAll(secondaryDataStores);
-		 pool = Executors.newCachedThreadPool();
-		 Runtime.getRuntime().addShutdownHook(new Thread() {
-			    public void run() { 
-			    	pool.shutdown(); 
-			    	}
-			});
-		 
-	}
-	
-	 private DataStore pickAServer(){
-			DataStore pickedServer = dataStores.get(serverIndex);
-			serverIndex++;
-			if(serverIndex >= dataStores.size()){
-				serverIndex = 0;
-			}
-			return pickedServer;
-		}
+	private Map<DataStore, Long> delay = new HashMap<DataStore, Long>();
 
-	@Override
-	public List<String> read(String key) {
-		//round robin server picking
-		return pickAServer().read(key);
+	public EventuallyConsistentStore() {
+		dataStores = new ArrayList<DataStore>();
+		DataStore primaryDataStore = CommonDataStoreFactory.getPrimaryDataStore();
+		List<DataStore> secondaryDataStores = CommonDataStoreFactory.getSecondaryDataStores();
+		dataStores.add(primaryDataStore);
+		dataStores.addAll(secondaryDataStores);
+		pool = Executors.newCachedThreadPool();
+		Runtime.getRuntime().addShutdownHook(new Thread() {
+			public void run() {
+				pool.shutdown();
+			}
+		});
+		delay.put(primaryDataStore, 85L);
+		delay.put(secondaryDataStores.get(0), 187L);
 	}
 
-	@Override
-	public void write(String key, List<String> values) {
-		
-		long systemTime = System.nanoTime();
-		
-		int serverId =0;
-		//check if values are existing	
-		DataStore dataStore = pickAServer();
-		serverId = dataStores.indexOf(dataStore);
-		boolean updated = updateValue(key, values.get(0), dataStore, serverId,systemTime);
-		if(updated) {
-			replicate(serverId, key, values.get(0),systemTime);
+	private DataStore pickAServer() {
+		DataStore pickedServer = dataStores.get(serverIndex);
+		serverIndex++;
+		if (serverIndex >= dataStores.size()) {
+			serverIndex = 0;
 		}
-		
+		return pickedServer;
 	}
 
-	private boolean updateValue(String key, String valueToWrite, DataStore dataStoreToUpdate, int originatingServer, long systemTime) {
-		//System.out.println("Trying to update value "+key+":"+valueToWrite+":"+systemTime+":"+serverId);
-		synchronized(dataStoreToUpdate){
-			List<String> existingValues = dataStoreToUpdate.read(key);
-			List<String> revisedValues = new ArrayList<String>();
-			
-			boolean isNewValueWritten = false;
-			if(existingValues != null && existingValues.size()>0){
-				for (String value : existingValues) {
-					String[] split = value.split(":");
-					boolean isSameServer = isSameServerEntry(split[1],originatingServer);
-					if(isSameServer){
-						if(isOutDated(split[2], originatingServer,  systemTime)){
-							return false;
-						}else{
-							revisedValues.add(appendValueWithServerDetails(valueToWrite, originatingServer, systemTime));
-							isNewValueWritten = true;
-						}
-					}else{
-						revisedValues.add(value);
-					}
-					
-				}
-			}
-			
-			if(!isNewValueWritten){
-				String value = appendValueWithServerDetails(valueToWrite, originatingServer,systemTime);
-				revisedValues.add(value);
-			}
-			
-			if(revisedValues.size() > 0){
-				dataStoreToUpdate.write(key, revisedValues);
-				return true;
-			}
-			return false;
-		}
-		
-	}
-	
-	private boolean isSameServerEntry(String existingServerEntry, int serverId) {
-		if(existingServerEntry.equals("Server"+serverId)){
-			return true;
-		}
-		return false;
-	}
-
-	private String appendValueWithServerDetails(String valueToWrite, int serverId, long systemTime){
-		return valueToWrite+":Server"+serverId+":"+systemTime;
-	}
-	
-	private boolean isOutDated(String timeStampInStore, int serverId,long systemTime){
-		if(Long.parseLong(timeStampInStore) > systemTime){
-			//value = markValueWithServerDetails(valueToWrite, serverId, systemTime);
-			return true;
-		}
-		return false;
-	}
-	
-	private void replicate(int primaryServerId,String key, String value, long systemTime){
+	private void replicate(int originatingServerId, String key, String value, long systemTime) {
 		for (DataStore secondaryDataStore : dataStores) {
 			int serverId = dataStores.indexOf(secondaryDataStore);
-			if(serverId != primaryServerId){
-				
+			if (serverId != originatingServerId) {
+
 				Runnable runnable = new Runnable() {
-					
+
 					@Override
 					public void run() {
-						//System.out.println("Trying to replicate value "+key+":"+value+":"+systemTime+":"+primaryServerId +" to "+serverId);
-						updateValue(key, value, secondaryDataStore, primaryServerId, systemTime);
+						writeMapToStore(secondaryDataStore, originatingServerId, key, value, systemTime);
 					}
 				};
-				//new Thread(runnable).start();
+				// new Thread(runnable).start();
 				pool.execute(runnable);
-				
+
 			}
 		}
 	}
-	
-	
+
+	@Override
+	public String read(String key) {
+		throw new UnsupportedOperationException("Eventual consistency returns a map of values");
+	}
+
+	@Override
+	public void write(String key, String value) {
+
+		writeToMap(key, null, value);
+	}
+
+	@Override
+	public Map<String, String> readAllValues(String key) {
+		DataStore server = pickAServer();
+		try {
+			Thread.sleep(delay.get(server));
+		} catch (InterruptedException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		return server.readAllValues(key);
+	}
+
+	private boolean writeMapToStore(DataStore dataStore, int serverId, String key, String value, long systemTime) {
+		try {
+			Thread.sleep(delay.get(dataStore));
+		} catch (InterruptedException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		return dataStore.writeToMap(key, "server" + serverId, value + ":" + systemTime);
+	}
+
+	@Override
+	public boolean writeToMap(String key, String mapKey, String mapValue) {
+		DataStore dataStore = pickAServer();
+		int serverId = dataStores.indexOf(dataStore);
+		long systemTime = System.nanoTime();
+		if (writeMapToStore(dataStore, serverId, key, mapValue, systemTime)) {
+			replicate(serverId, key, mapValue, systemTime);
+			return true;
+		}
+		return false;
+	}
 
 }

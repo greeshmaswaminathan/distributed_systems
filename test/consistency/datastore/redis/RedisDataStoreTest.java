@@ -22,21 +22,17 @@ public class RedisDataStoreTest {
 
 	@Test
 	public void testReadWrite() {
-		List<String> values = new ArrayList<String>();
-		values.add("Junit1");
-		values.add("Junit2");
-		redisDataStore.write("Test1",values  );
-		List<String> valuesFromRedis = redisDataStore.read("Test1");
-		Assert.assertTrue(valuesFromRedis.size() == 2);
-		Assert.assertTrue(valuesFromRedis.get(0).equals("Junit1"));
-		Assert.assertTrue(valuesFromRedis.get(1).equals("Junit2"));
+		redisDataStore.write("Test1","Junit1"  );
+		String valuesFromRedis = redisDataStore.read("Test1");
+		Assert.assertTrue(valuesFromRedis.equals("Junit1"));
 		
 		List<String> newValues = new ArrayList<>();
 		newValues.add("Junit3");
-		redisDataStore.write("Test1", newValues);
+		redisDataStore.write("Test1", "Junit3");
 		valuesFromRedis = redisDataStore.read("Test1");
-		Assert.assertTrue(valuesFromRedis.size() == 1);
-		Assert.assertTrue(valuesFromRedis.get(0).equals("Junit3"));
+		Assert.assertTrue(valuesFromRedis.equals("Junit3"));
+		
+		
 	}
 	
 	

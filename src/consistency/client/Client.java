@@ -27,14 +27,96 @@ public class Client implements Runnable{
 		
 		try {
 			Proxy proxy = Proxy.getProxy(consistencyType);
-			writeDataToStore(proxy,consistencyType);
-			readFromDataStore(proxy,consistencyType);
+			//writeDataToStore(proxy,consistencyType);
+			//readFromDataStore(proxy,consistencyType);
+			readIntensive(proxy,consistencyType);
+			//writeIntensive(proxy, consistencyType);
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
 	
+	private void readIntensive(Proxy proxy, Consistency consistencyType) throws IOException {
+		try {
+			openLog("clientlog_readwrite_");
+			
+			BufferedReader reader = new BufferedReader(new FileReader("readWritedata"+id));
+			String data = "";
+			//int temp = 0;
+			//long counter = 0;
+			for(int i = 1; i <= 100; i++){
+				data = reader.readLine();
+				if(i%4 == 1){
+					//temp = i;
+					String[] result = data.split(",");
+					long before = System.nanoTime();
+					proxy.write(result[0], result[1]);
+					writeToLog((System.nanoTime() - before)+System.lineSeparator());
+				}else{
+					long before = System.nanoTime();
+					read(proxy, data);
+					writeToLog((System.nanoTime() - before)+System.lineSeparator());
+				}
+			}
+			
+			reader.close();
+			closeLog();
+			 
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	private void writeIntensive(Proxy proxy, Consistency consistencyType) throws IOException {
+		try {
+			openLog("clientlog_writeintense_");
+			
+			BufferedReader reader = new BufferedReader(new FileReader("writeIntense"+id));
+			String data = "";
+			//int temp = 0;
+			//long counter = 0;
+			for(int i = 1; i <= 100; i++){
+				data = reader.readLine();
+				if(i%4 == 0){
+					long before = System.nanoTime();
+					read(proxy, data);
+					writeToLog((System.nanoTime() - before)+System.lineSeparator());
+				}else{
+					String[] result = data.split(",");
+					long before = System.nanoTime();
+					proxy.write(result[0], result[1]);
+					writeToLog((System.nanoTime() - before)+System.lineSeparator());
+				}
+			}
+			
+			reader.close();
+			closeLog();
+			 
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	private void read(Proxy proxy, String key){
+		if(consistencyType == Consistency.EVENTUAL){
+			 proxy.readAllValues(key);
+		}
+		else if(consistencyType == Consistency.BOUNDED_STALENESS){
+			proxy.read(key, 10);
+		}
+		else if(consistencyType == Consistency.READ_MY_WRITES){
+			proxy.readAllValues(key, "Client"+this.id);
+		}
+		else if(consistencyType == Consistency.MONOTONIC_READS){
+			proxy.readAllValues(key, "Client"+this.id);
+		}
+		else{
+			proxy.read(key);
+		}
+		
+	}
+
 	private void writeDataToStore(Proxy proxy, Proxy.Consistency consistency) throws IOException{
 		try {
 			openLog("clientlog_write_");

@@ -2,12 +2,11 @@ package consistency.datastore;
 
 import java.util.Map;
 
-public interface DataStore {
+public interface DataStore extends BackEndStore {
+	//bounded
+	public String read(String key, int timeBoundInSeconds);
+	//session aware
+	public Map<String,String> readAllValues(String key, String clientId);
 	
-	public String read(String key);
-	public void write(String key, String value);
-	public Map<String,String> readAllValues(String key);
 	
-	public boolean writeToMap(String key, String mapKey, String mapValue);
-
 }

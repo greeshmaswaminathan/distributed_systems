@@ -1,7 +1,5 @@
 package consistency.type;
 
-import java.util.Map;
-
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -41,11 +39,13 @@ public class StronglyConsistentTest {
 
 	@Test
 	public void testIfServersAreConsistent(){
-		for(int index=1; index <= 10000 ; index++){
+		for(int index=1; index <= 100 ; index++){
 			String value1 = consistentStore.read("Key"+index);
 			String value2 = consistentStore.read("Key"+index);
-			if(!value1.equals(value2)){
-				System.out.println("Diff values for Key"+index+": "+value1 + value2);
+			if(value1!=null && value2!=null){
+				if(!value1.equals(value2)){
+					System.out.println("Diff values for Key"+index+": "+value1 + value2);
+				}
 			}
 		}
 		

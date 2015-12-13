@@ -16,7 +16,7 @@ public class RedisDataStoreTest {
 	
 	@BeforeClass
 	public static void init(){
-		redisDataStore = new RedisDataStore(new JedisPool(new JedisPoolConfig(), "192.168.99.100",6379));
+		redisDataStore = new RedisDataStore(new JedisPool(new JedisPoolConfig(), "192.168.99.100",6379),0);
 	}
 
 

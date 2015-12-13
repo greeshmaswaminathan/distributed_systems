@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Properties;
 
-import consistency.datastore.DataStore;
+import consistency.datastore.BackEndStore;
 
 public class CommonDataStoreFactory {
 	
@@ -27,11 +27,11 @@ public class CommonDataStoreFactory {
 		}
 	}
 
-	public static DataStore getPrimaryDataStore() {
+	public static BackEndStore getPrimaryDataStore() {
 		return datastoreFactory.getPrimaryDataStore();
 	}
 
-	public static List<DataStore> getSecondaryDataStores() {
+	public static List<BackEndStore> getSecondaryDataStores() {
 		return datastoreFactory.getSecondaryDataStores();
 	}
 
